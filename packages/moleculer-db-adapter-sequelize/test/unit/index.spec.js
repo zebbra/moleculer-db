@@ -18,7 +18,8 @@ const model = {
 const db = {
 	authenticate: jest.fn(() => Promise.resolve()),
 	define: jest.fn(() => model),
-	close: jest.fn(),
+	isDefined: jest.fn(() => false),
+	close: jest.fn(() => Promise.resolve()),
 };
 
 let Sequelize = require("sequelize");

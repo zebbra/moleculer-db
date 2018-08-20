@@ -20,7 +20,6 @@ class SequelizeDbAdapter {
 	 */
 	constructor(...opts) {
 		this.opts = opts;
-		//mongoose.Promise = Promise;
 	}
 
 	/**
@@ -49,12 +48,27 @@ class SequelizeDbAdapter {
 	 * @memberof SequelizeDbAdapter
 	 */
 	connect() {
-		this.db = new Sequelize(...this.opts);
+		// Allow passing an existing Sequelize instance as options.
+		if(this.opts.length === 1 && _.isFunction(this.opts[0].authenticate)) {
+			this.db = this.opts[0];
+
+			// Don't close connection for the shared instance on disconnect as other
+			// services might still use it.
+			this.closeOnDisconnect = false;
+		} else {
+			this.db = new Sequelize(...this.opts);
+			this.closeOnDisconnect = true;
+		}
 
 		return this.db.authenticate().then(() => {
-
 			let m = this.service.schema.model;
-			this.model = this.db.define(m.name, m.define, m.options);
+
+			if(this.db.isDefined(m.name)) {
+				this.model = this.db.model(m.name);
+			} else {
+				this.model = this.db.define(m.name, m.define, m.options);
+			}
+
 			this.service.model = this.model;
 
 			return this.model.sync();
@@ -69,8 +83,8 @@ class SequelizeDbAdapter {
 	 * @memberof SequelizeDbAdapter
 	 */
 	disconnect() {
-		if (this.db) {
-			this.db.close();
+		if (this.db && this.closeOnDisconnect) {
+			return this.db.close();
 		}
 		return Promise.resolve();
 	}
