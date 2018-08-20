@@ -281,6 +281,20 @@ class SequelizeDbAdapter {
 	 */
 	createCursor(params, isCounting) {
 		if (params) {
+			params = _.cloneDeep(params);
+			let includes = params.include || [];
+
+			for (const attr in params.query) {
+				const val = params.query[attr];
+				const fields = attr.split(".");
+
+				if (fields.length > 1) {
+					delete params.query[attr];
+					params.query[`$${attr}$`] = val;
+					includes.push({ association: this.model.associations[fields[0]] });
+				}
+			}
+
 			const q = {
 				where: params.query || {}
 			};
@@ -318,6 +332,11 @@ class SequelizeDbAdapter {
 			if (_.isNumber(params.limit) && params.limit > 0)
 				q.limit = params.limit;
 
+			// Joins
+			if (includes.length > 0) {
+				q.include = includes;
+			}
+
 			if (isCounting)
 				return this.model.count(q);
 			else
@@ -331,7 +350,7 @@ class SequelizeDbAdapter {
 	}
 
 	/**
-	 * Convert the `sort` param to a `sort` object to Mongo queries.
+	 * Convert the `sort` param to a `sort` object to Sequelize queries.
 	 *
 	 * @param {String|Array<String>|Object} paramSort
 	 * @returns {Object} Return with a sort object like `[["votes", "ASC"], ["title", "DESC"]]`
@@ -350,15 +369,33 @@ class SequelizeDbAdapter {
 				else
 					sortObj.push([s, "ASC"]);
 			});
-			return sortObj;
+			sort = sortObj;
+		}
+		else if (_.isObject(sort)) {
+			sort = Object.keys(sort).map(name => [name, sort[name] > 0 ? "ASC" : "DESC"]);
+		}
+		else {
+			sort = [];
 		}
 
-		if (_.isObject(sort)) {
-			return Object.keys(sort).map(name => [name, sort[name] > 0 ? "ASC" : "DESC"]);
-		}
+		return sort.map((s) => {
+			const path  = s[0].split(".");
+			const order = s[1];
 
-		/* istanbul ignore next*/
-		return [];
+			if (path.length > 1) {
+				const field = path.pop();
+				let model = this.model;
+
+				return path
+					.map((assoc) => {
+						model = model.associations[assoc];
+						return model;
+					})
+					.concat(field, order);
+			} else {
+				return s;
+			}
+		});
 	}
 
 }
